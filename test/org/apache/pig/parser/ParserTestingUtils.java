@@ -44,13 +44,13 @@ public class ParserTestingUtils {
         QueryParser.query_return result = parser.query();
         Tree ast = (Tree)result.getTree();
         TreePrinter.printTree( (CommonTree)ast, 0 );
-        
+
         if( 0 < parser.getNumberOfSyntaxErrors() )
             throw new ParsingFailureException( QueryParser.class );
-        
+
         return ast;
     }
-    
+
     public static Tree validateAst(String query)
     throws RecognitionException, ParsingFailureException, IOException {
         Tree ast = parse( query );
@@ -59,28 +59,27 @@ public class ParserTestingUtils {
         AstValidator.query_return newResult = walker.query();
         Tree newAst = (Tree)newResult.getTree();
         TreePrinter.printTree( (CommonTree)newAst, 0 );
-        
-        if( 0 < walker.getNumberOfSyntaxErrors() ) 
+
+        if( 0 < walker.getNumberOfSyntaxErrors() )
             throw new ParsingFailureException( AstValidator.class );
-        
+
         return newAst;
     }
-    
+
     public static LogicalPlan generateLogicalPlan(String query)
     throws RecognitionException, ParsingFailureException, IOException {
         Tree ast = validateAst( query );
-        
+
         CommonTreeNodeStream input = new CommonTreeNodeStream( ast );
         LogicalPlanBuilder builder = new LogicalPlanBuilder( input );
         LogicalPlanGenerator walker = new LogicalPlanGenerator( input, builder );
         walker.query();
-        
-        if( 0 < walker.getNumberOfSyntaxErrors() ) 
+
+        if( 0 < walker.getNumberOfSyntaxErrors() )
             throw new ParsingFailureException( LogicalPlanGenerator.class );
-        
+
         LogicalPlan plan = walker.getLogicalPlan();
-        System.out.println( "Generated logical plan: " + plan.toString() );
-        
+
         return plan;
     }
 

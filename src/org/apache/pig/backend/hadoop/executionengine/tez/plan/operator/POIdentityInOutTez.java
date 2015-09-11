@@ -58,10 +58,9 @@ public class POIdentityInOutTez extends POLocalRearrangeTez implements TezInput,
     private transient boolean shuffleInput;
     private transient boolean finished = false;
 
-    public POIdentityInOutTez(OperatorKey k, POLocalRearrange inputRearrange, String inputKey) {
+    public POIdentityInOutTez(OperatorKey k, POLocalRearrange inputRearrange) {
         super(inputRearrange);
         this.mKey = k;
-        this.inputKey = inputKey;
     }
 
     public void setInputKey(String inputKey) {

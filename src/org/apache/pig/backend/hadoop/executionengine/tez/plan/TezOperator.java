@@ -173,8 +173,6 @@ public class TezOperator extends Operator<TezOpPlanVisitor> {
         LIMIT_AFTER_SORT,
         // Indicate if this job is a union job
         UNION,
-        // Indicate if this job is a distinct job
-        DISTINCT,
         // Indicate if this job is a native job
         NATIVE;
     };
@@ -420,14 +418,6 @@ public class TezOperator extends Operator<TezOpPlanVisitor> {
 
     public void markUnion() {
         feature.set(OPER_FEATURE.UNION.ordinal());
-    }
-
-    public boolean isDistinct() {
-        return feature.get(OPER_FEATURE.DISTINCT.ordinal());
-    }
-
-    public void markDistinct() {
-        feature.set(OPER_FEATURE.DISTINCT.ordinal());
     }
 
     public boolean isNative() {

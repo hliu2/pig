@@ -68,16 +68,28 @@ public class TestLogicalPlanGenerator {
         command = Util.createInputFile("script", "pl", script);
     }
 
+    private void generateLogicalPlan(String query) throws Exception {
+        ParserTestingUtils.generateLogicalPlan( query );
+    }
+
     @Test
     public void test1() throws Exception {
-        String query = "A = load 'x' as ( u:int, v:long, w:bytearray); " +
-                       "B = limit A 100; " +
-                       "C = filter B by 2 > 1; " +
+        String query = "Y = load 'x' as ( u:int, v:long, w:bytearray); " +
+                       "C = filter Y by $2 > 10; " +
                        "D = load 'y' as (d1, d2); " +
                        "E = join C by ( $0, $1 ), D by ( d1, d2 ) using 'replicated' parallel 16; " +
                        "F = store E into 'output';";
         generateLogicalPlan( query );
 
+    }
+
+
+
+    @Test
+    public void testBoolean3() throws Exception {
+        generateLogicalPlan(
+                "X = load 'INPUT_FILE' as (id:int, fruit);" +
+                "B = filter X by fruit == 5 and ( fruit neq 'cabbage' or id == 17 );");
     }
 
     @Test
@@ -96,30 +108,11 @@ public class TestLogicalPlanGenerator {
     }
 
     @Test
-    public void test3() throws Exception {
-        String query = "a = load '1.txt'  as (name, age, gpa);" +
-                       "b = group a by name PARTITION BY org.apache.pig.test.utils.SimpleCustomPartitioner2;" +
-                       "c = foreach b generate group, COUNT(a.age);" +
-                       "store c into 'y';";
-        generateLogicalPlan( query );
-    }
-
-    private void generateLogicalPlan(String query) throws Exception {
-        ParserTestingUtils.generateLogicalPlan( query );
-    }
-
-    @Test
     public void test4() throws Exception {
-        String query = "A = load 'x'; " +
-                       "B = mapreduce '" + "myjar.jar" + "' " +
-                           "Store A into 'table_testNativeMRJobSimple_input' "+
-                           "Load 'table_testNativeMRJobSimple_output' "+
-                           "`org.apache.pig.test.utils.WordCount -files " + "file " +
-                           "table_testNativeMRJobSimple_input table_testNativeMRJobSimple_output " +
-                           "stopworld.file" + "`;" +
-                        "C = Store B into 'output';";
+        String query = "X = load 'INPUT_FILE' as (id:int, fruit);B = filter X by id == 5 and ( fruit neq 'cabbage' or id == 17 );";
         generateLogicalPlan( query );
     }
+
 
     // Test define function.
     @Test
@@ -351,14 +344,14 @@ public class TestLogicalPlanGenerator {
                        "store B into 'y';";
         generateLogicalPlan( query );
     }
-    
+
     @Test
     public void testFilter2() throws Exception {
         generateLogicalPlan(
                 "A = load 'x' as ( u:int, v:long, w:bytearray); " +
                 "B = filter A by u is null;\n");
     }
-    
+
     @Test
     public void testFilter3() throws Exception {
         generateLogicalPlan(
@@ -370,7 +363,7 @@ public class TestLogicalPlanGenerator {
     public void testFilter4() throws Exception {
         generateLogicalPlan("b = filter (load 'd.txt' as (id:int, v1, v2)) by (id > 3) AND (v1 is null);");
     }
-    
+
     @Test
     public void testScopedAlias() throws Exception {
         String query = "A = load 'x' as ( u:int, v:long, w:bytearray);" +
@@ -493,7 +486,7 @@ public class TestLogicalPlanGenerator {
             + "C = rank A;";
         generateLogicalPlan(query);
     }
-    
+
     @Test
     public void testCast1() throws Exception {
         String query = "data = LOAD 'data.txt' AS (num:CHARARRAY);" +
@@ -507,7 +500,7 @@ public class TestLogicalPlanGenerator {
                 "sds = LOAD '/my/data/location' AS (simpleFields:map[], mapFields:map[], listMapFields:map[]); " +
                 "queries_rand = FOREACH sds GENERATE (CHARARRAY) (mapFields#'page_params'#'query') AS query_string;");
     }
-    
+
     @Test
     public void testBoolean1() throws Exception {
         generateLogicalPlan(
@@ -527,28 +520,22 @@ public class TestLogicalPlanGenerator {
                 "((org.apache.pig.test.utils.AccumulatorBagCount(A)>3 or " +
                 "org.apache.pig.test.utils.AccumulatorBagCount(A)<2)?0:1);");
     }
-    
-    @Test
-    public void testBoolean3() throws Exception {
-        generateLogicalPlan(
-                "A = load 'INPUT_FILE' as (id:int, fruit);" +
-                "B = filter A by id < 5 and ( fruit neq 'cabbage' or id == 17 );");
-    }
-    
+
+
     @Test
     public void testBoolean4() throws Exception {
         generateLogicalPlan(
                 "a = load '1.txt' as (a0, a1);" +
                 "b = foreach a generate (a0 is not null ? 0 : 1);");
     }
-    
+
     @Test
     public void testBoolean5() throws Exception {
         generateLogicalPlan(
                 "a = load '1.txt' as (a0, a1);" +
                 "b = foreach a generate (a0 is null ? 0 : 2);");
     }
-    
+
     @Test
     public void testAccumWithRegexp() throws Exception {
         generateLogicalPlan(
@@ -563,7 +550,7 @@ public class TestLogicalPlanGenerator {
                 "A = LOAD 'MapSideGroupInput.txt' using org.apache.pig.test.TestCollectedGroup$DummyCollectableLoader() as (id, name, grade);" +
                 "B = group A by (id, name) using 'collected';");
     }
-    
+
     @Test
     public void testMapUDF() throws Exception {
         generateLogicalPlan(
@@ -584,29 +571,29 @@ public class TestLogicalPlanGenerator {
     @Test
     public void testSimpleMapCast() throws Exception {
         generateLogicalPlan(
-                "a = load 'testSimpleMapCast' as (m);" + 
+                "a = load 'testSimpleMapCast' as (m);" +
                 "b = foreach a generate ([int])m;");
     }
-    
+
     @Test
     public void testComplexCast() throws Exception {
         generateLogicalPlan(
                 "a = load 'testComplexCast' as (m);" +
                 "b = foreach a generate ([{(i:int,j:int)}])m;");
     }
-    
+
     @Test
     public void testNullConstant() throws Exception {
         generateLogicalPlan(
                 "a = load 'foo' as (x:int, y:double, str:chararray);" +
                 "b = foreach a generate {(null)}, ['2'#null];");
     }
-    
+
     @Test
     public void testEmptyTupConst() throws Exception {
         generateLogicalPlan( "a = foreach (load 'b') generate ({});");
     }
-    
+
     @Test
     public void testJoin1() throws Exception {
         generateLogicalPlan(
@@ -616,7 +603,7 @@ public class TestLogicalPlanGenerator {
                 "D = filter B by m#'key2'==2;" +
                 "E = join C by m#'key1', D by m#'key1';");
     }
-    
+
     // See: PIG-2937
     @Test
     public void testRelationAliasInNestedForeachWhereUnspecified() throws Exception {

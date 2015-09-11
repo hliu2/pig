@@ -70,9 +70,9 @@ public class NullablePartitionWritable extends PigNullableWritable{
 
 	@Override
     public void readFields(DataInput in) throws IOException {
-		byte type = in.readByte();
+		String c = in.readUTF();
 		try {
-			key = HDataType.getNewWritableComparable(type);
+			key = HDataType.getWritableComparable(c);
 		} catch(Exception e) {
 			throw new IOException(e);
 		}
@@ -81,7 +81,7 @@ public class NullablePartitionWritable extends PigNullableWritable{
 
 	@Override
     public void write(DataOutput out) throws IOException {
-		out.writeByte(HDataType.findTypeFromClassName(key.getClass().getName()));
+		out.writeUTF(key.getClass().getName());
 		key.write(out);
 	}
 

@@ -71,7 +71,7 @@ public class POShuffledValueInputTez extends PhysicalOperator implements TezInpu
 
     @Override
     public void replaceInput(String oldInputKey, String newInputKey) {
-        while (inputKeys.remove(oldInputKey)) {
+        if (inputKeys.remove(oldInputKey)) {
             inputKeys.add(newInputKey);
         }
     }

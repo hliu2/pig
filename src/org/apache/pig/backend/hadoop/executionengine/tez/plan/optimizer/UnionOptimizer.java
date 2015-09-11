@@ -26,6 +26,7 @@ import java.util.List;
 import java.util.Map.Entry;
 import java.util.Set;
 
+import org.apache.commons.lang.ArrayUtils;
 import org.apache.pig.backend.hadoop.executionengine.physicalLayer.PhysicalOperator;
 import org.apache.pig.backend.hadoop.executionengine.physicalLayer.expressionOperators.POUserFunc;
 import org.apache.pig.backend.hadoop.executionengine.physicalLayer.plans.PhysicalPlan;
@@ -42,7 +43,6 @@ import org.apache.pig.backend.hadoop.executionengine.tez.plan.operator.POValueOu
 import org.apache.pig.backend.hadoop.executionengine.tez.plan.udf.ReadScalarsTez;
 import org.apache.pig.backend.hadoop.executionengine.tez.runtime.TezInput;
 import org.apache.pig.backend.hadoop.executionengine.tez.runtime.TezOutput;
-import org.apache.pig.backend.hadoop.executionengine.tez.util.TezCompilerUtil;
 import org.apache.pig.builtin.RoundRobinPartitioner;
 import org.apache.pig.impl.plan.OperatorKey;
 import org.apache.pig.impl.plan.PlanException;
@@ -71,26 +71,14 @@ import org.apache.tez.runtime.library.output.UnorderedPartitionedKVOutput;
 public class UnionOptimizer extends TezOpPlanVisitor {
 
     private TezOperPlan tezPlan;
-    private List<String> unsupportedStoreFuncs;
-
-    public UnionOptimizer(TezOperPlan plan, List<String> unsupportedStoreFuncs) {
+    public UnionOptimizer(TezOperPlan plan) {
         super(plan, new ReverseDependencyOrderWalker<TezOperator, TezOperPlan>(plan));
         tezPlan = plan;
-        this.unsupportedStoreFuncs = unsupportedStoreFuncs;
     }
 
-    public static boolean isOptimizable(TezOperator tezOp, List<String> unsupportedStoreFuncs)
-            throws VisitorException {
+    public static boolean isOptimizable(TezOperator tezOp) {
         if((tezOp.isLimit() || tezOp.isLimitAfterSort()) && tezOp.getRequestedParallelism() == 1) {
             return false;
-        }
-        if (unsupportedStoreFuncs != null) {
-            List<POStoreTez> stores = PlanHelper.getPhysicalOperators(tezOp.plan, POStoreTez.class);
-            for (POStoreTez store : stores) {
-                if (unsupportedStoreFuncs.contains(store.getStoreFunc().getClass().getName())) {
-                    return false;
-                }
-            }
         }
         return true;
     }
@@ -101,7 +89,7 @@ public class UnionOptimizer extends TezOpPlanVisitor {
             return;
         }
 
-        if (!isOptimizable(tezOp, unsupportedStoreFuncs)) {
+        if (!isOptimizable(tezOp)) {
             return;
         }
 
@@ -274,9 +262,14 @@ public class UnionOptimizer extends TezOpPlanVisitor {
                 }
 
                 for (TezOperator actualPred : actualPreds) {
+                    List<TezOutput> tezOutputs = PlanHelper.getPhysicalOperators(actualPred.plan,
+                                    TezOutput.class);
 
-                    TezCompilerUtil.replaceOutput(actualPred, unionOpKey, splitPredKey.toString());
-
+                    for (TezOutput tezOut : tezOutputs) {
+                        if (ArrayUtils.contains(tezOut.getTezOutputs(), unionOpKey)) {
+                            tezOut.replaceOutput(unionOpKey, splitPredKey.toString());
+                        }
+                    }
                     TezEdgeDescriptor edge = actualPred.outEdges.remove(unionOp.getOperatorKey());
                     if (edge == null) {
                         throw new VisitorException("Edge description is empty");
@@ -338,8 +331,27 @@ public class UnionOptimizer extends TezOpPlanVisitor {
                 }
 
                 for (TezOperator actualSucc : actualSuccs) {
+                    LinkedList<TezInput> inputs = PlanHelper.getPhysicalOperators(succ.plan, TezInput.class);
+                    for (TezInput tezInput : inputs) {
+                        for (String inputKey : tezInput.getTezInputs()) {
+                            if (inputKey.equals(unionOpKey)) {
+                                tezInput.replaceInput(inputKey, splitPredOpKey);
+                            }
+                        }
+                    }
 
-                    TezCompilerUtil.replaceInput(succ, unionOpKey, splitPredOpKey);
+                    List<POUserFunc> userFuncs = PlanHelper.getPhysicalOperators(succ.plan, POUserFunc.class);
+                    for (POUserFunc userFunc : userFuncs) {
+                        if (userFunc.getFunc() instanceof ReadScalarsTez) {
+                            TezInput tezInput = (TezInput)userFunc.getFunc();
+                            for (String inputKey : tezInput.getTezInputs()) {
+                                if (inputKey.equals(unionOpKey)) {
+                                    tezInput.replaceInput(inputKey, splitPredOpKey);
+                                    userFunc.getFuncSpec().setCtorArgs(tezInput.getTezInputs());
+                                }
+                            }
+                        }
+                    }
 
                     TezEdgeDescriptor edge = actualSucc.inEdges.remove(unionOp.getOperatorKey());
                     if (edge == null) {

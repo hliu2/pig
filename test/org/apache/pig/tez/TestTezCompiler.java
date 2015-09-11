@@ -33,7 +33,6 @@ import org.apache.pig.backend.hadoop.executionengine.tez.TezLauncher;
 import org.apache.pig.backend.hadoop.executionengine.tez.TezLocalExecType;
 import org.apache.pig.backend.hadoop.executionengine.tez.plan.TezPlanContainer;
 import org.apache.pig.backend.hadoop.executionengine.tez.plan.TezPlanContainerPrinter;
-import org.apache.pig.builtin.PigStorage;
 import org.apache.pig.impl.PigContext;
 import org.apache.pig.impl.plan.NodeIdGenerator;
 import org.apache.pig.test.Util;
@@ -195,19 +194,6 @@ public class TestTezCompiler {
     }
 
     @Test
-    public void testSkewedJoinFilter() throws Exception {
-        String query =
-                "a = load 'file:///tmp/input1' as (x:int, y:int);" +
-                "a = filter a by x == 1;" +
-                "b = load 'file:///tmp/input2' as (x:int, z:int);" +
-                "c = join a by x, b by x using 'skewed';" +
-                "d = foreach c generate a::x as x, y, z;" +
-                "store d into 'file:///tmp/output';";
-
-        run(query, "test/org/apache/pig/test/data/GoldenFiles/tez/TEZC-SkewJoin-2.gld");
-    }
-
-    @Test
     public void testLimit() throws Exception {
         String query =
                 "a = load 'file:///tmp/input' as (x:int, y:int);" +
@@ -324,17 +310,6 @@ public class TestTezCompiler {
                 "STORE b INTO 'file:///tmp/output';";
 
         run(query, "test/org/apache/pig/test/data/GoldenFiles/tez/TEZC-Order-1.gld");
-    }
-
-    @Test
-    public void testOrderByWithFilter() throws Exception {
-        String query =
-                "a = load 'file:///tmp/input' using PigStorage(',') as (x:int, y:int);" +
-                "b = filter a by x == 1;" +
-                "c = order b by x;" +
-                "STORE c INTO 'file:///tmp/output';";
-
-        run(query, "test/org/apache/pig/test/data/GoldenFiles/tez/TEZC-Order-2.gld");
     }
 
     // PIG-3759, PIG-3781
@@ -500,26 +475,8 @@ public class TestTezCompiler {
 
         setProperty(PigConfiguration.PIG_TEZ_OPT_UNION, "" + true);
         run(query, "test/org/apache/pig/test/data/GoldenFiles/tez/TEZC-Union-1.gld");
-        resetScope();
         setProperty(PigConfiguration.PIG_TEZ_OPT_UNION, "" + false);
         run(query, "test/org/apache/pig/test/data/GoldenFiles/tez/TEZC-Union-1-OPTOFF.gld");
-    }
-
-    @Test
-    public void testUnionUnSupportedStore() throws Exception {
-        String query =
-                "a = load 'file:///tmp/input' as (x:int, y:chararray);" +
-                "b = load 'file:///tmp/input' as (y:chararray, x:int);" +
-                "c = union onschema a, b;" +
-                "store c into 'file:///tmp/output';";
-
-        setProperty(PigConfiguration.PIG_TEZ_OPT_UNION, "" + true);
-        String oldConfigValue = getProperty(PigConfiguration.PIG_TEZ_OPT_UNION_UNSUPPORTED_STOREFUNCS);
-        setProperty(PigConfiguration.PIG_TEZ_OPT_UNION_UNSUPPORTED_STOREFUNCS, PigStorage.class.getName());
-        // Plan should not have union optimization applied
-        run(query, "test/org/apache/pig/test/data/GoldenFiles/tez/TEZC-Union-1-OPTOFF.gld");
-        // Restore the value
-        setProperty(PigConfiguration.PIG_TEZ_OPT_UNION_UNSUPPORTED_STOREFUNCS, oldConfigValue);
     }
 
     @Test
@@ -588,8 +545,6 @@ public class TestTezCompiler {
 
     @Test
     public void testUnionSkewedJoin() throws Exception {
-        // TODO: PIG-4574 optimization needs to be done for this as well.
-        // Requires changes in UnionOptimizer
         String query =
                 "a = load 'file:///tmp/input' as (x:int, y:chararray);" +
                 "b = load 'file:///tmp/input' as (y:chararray, x:int);" +
@@ -606,8 +561,6 @@ public class TestTezCompiler {
 
     @Test
     public void testUnionOrderby() throws Exception {
-        // TODO: PIG-4574 optimization needs to be done for this as well.
-        // Requires changes in UnionOptimizer
         String query =
                 "a = load 'file:///tmp/input' as (x:int, y:chararray);" +
                 "b = load 'file:///tmp/input' as (y:chararray, x:int);" +
@@ -834,16 +787,8 @@ public class TestTezCompiler {
         run(query, "test/org/apache/pig/test/data/GoldenFiles/tez/TEZC-Rank-2.gld");
     }
 
-    private String getProperty(String property) {
-        return pigServer.getPigContext().getProperties().getProperty(property);
-    }
-
     private void setProperty(String property, String value) {
-        if (value == null) {
-            pigServer.getPigContext().getProperties().remove(property);
-        } else {
-            pigServer.getPigContext().getProperties().setProperty(property, value);
-        }
+        pigServer.getPigContext().getProperties().setProperty(property, value);
     }
 
     private void run(String query, String expectedFile) throws Exception {

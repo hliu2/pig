@@ -36,8 +36,6 @@ import javax.management.openmbean.CompositeData;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
-import org.apache.pig.JVMReuseManager;
-import org.apache.pig.StaticDataCleanup;
 
 /**
  * This class Tracks the tenured pool and a list of Spillable objects. When memory gets low, this
@@ -50,7 +48,7 @@ import org.apache.pig.StaticDataCleanup;
  */
 public class SpillableMemoryManager implements NotificationListener {
 
-    private static final Log log = LogFactory.getLog(SpillableMemoryManager.class);
+    private final Log log = LogFactory.getLog(getClass());
 
     private LinkedList<WeakReference<Spillable>> spillables = new LinkedList<WeakReference<Spillable>>();
     // References to spillables with size
@@ -91,17 +89,7 @@ public class SpillableMemoryManager implements NotificationListener {
 
     private volatile boolean blockRegisterOnSpill = false;
 
-    private static final SpillableMemoryManager manager = new SpillableMemoryManager();
-
-    static {
-        JVMReuseManager.getInstance().registerForStaticDataCleanup(SpillableMemoryManager.class);
-    }
-
-    @StaticDataCleanup
-    public static void cleanupStaticData() {
-        manager.spillables.clear();
-        manager.accumulatedFreeSize = 0L;
-    }
+    private static volatile SpillableMemoryManager manager = new SpillableMemoryManager();
 
     private SpillableMemoryManager() {
         ((NotificationEmitter)ManagementFactory.getMemoryMXBean()).addNotificationListener(this, null, null);

@@ -24,6 +24,7 @@ import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configurable;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.io.WritableComparator;
+import org.apache.hadoop.mapred.JobConf;
 import org.apache.pig.data.BinInterSedes;
 import org.apache.pig.data.DataType;
 import org.apache.pig.impl.io.NullableBytesWritable;
@@ -33,14 +34,13 @@ public class PigBytesRawComparator extends WritableComparator implements Configu
 
     private final Log mLog = LogFactory.getLog(getClass());
     private boolean[] mAsc;
-    private BinInterSedes.BinInterSedesTupleRawComparator mWrappedComp;
+    private WritableComparator mWrappedComp;
 
     public PigBytesRawComparator() {
         super(NullableBytesWritable.class);
         mWrappedComp = new BinInterSedes.BinInterSedesTupleRawComparator();
     }
 
-    @Override
     public void setConf(Configuration conf) {
         try {
             mAsc = (boolean[])ObjectSerializer.deserialize(conf.get(
@@ -57,7 +57,6 @@ public class PigBytesRawComparator extends WritableComparator implements Configu
         ((BinInterSedes.BinInterSedesTupleRawComparator)mWrappedComp).setConf(conf);
     }
 
-    @Override
     public Configuration getConf() {
         return null;
     }
@@ -70,7 +69,6 @@ public class PigBytesRawComparator extends WritableComparator implements Configu
      *    For non-bytearrays, we use BinInterSedesTupleRawComparator.
      * If either is null, null one is defined to be less.
      */
-    @Override
     public int compare(byte[] b1, int s1, int l1, byte[] b2, int s2, int l2) {
         int rc = 0;
 
@@ -124,26 +122,14 @@ public class PigBytesRawComparator extends WritableComparator implements Configu
             if( dataByteArraysCompare ) {
               rc = WritableComparator.compareBytes(b1, offset1, length1, b2, offset2, length2);
             } else {
-              // Subtract 2, one for null byte and one for index byte.
-              rc = mWrappedComp.compare(b1, s1 + 1, l1 - 2, b2, s2 + 1, l2 - 2);
-              // handle PIG-927. If tuples are equal but any field inside tuple is null,
-              // then we do not merge keys if indices are not same
-              if (rc == 0 && mWrappedComp.hasComparedTupleNull()) {
-                rc = b1[s1 + 1] - b2[s2 + 1];
-                // Redundant as there will not be any sort order with multiple indices
-                // But just for sake of completeness.
-                if (!mAsc[0]) rc *= -1;
-              }
-              // PIG-4298 - Return here to avoid reversing the sign of rc when
-              // mAsc[0] is false because BinInterSedesTupleRawComparator.compare()
-              // already takes that into account.
-              return rc;
+              // Subtract 2, one for null byte and one for index byte. Also, do not reverse the sign
+              // of rc when mAsc[0] is false because BinInterSedesTupleRawComparator.compare() already
+              // takes that into account.
+              return mWrappedComp.compare(b1, s1 + 1, l1 - 2, b2, s2 + 1, l2 - 2);
             }
         } else {
-            // Two nulls are equal if indices are same
-            if (b1[s1] != 0 && b2[s2] != 0) {
-                rc = b1[s1 + 1] - b2[s2 + 1];
-            }
+            // For sorting purposes two nulls are equal.
+            if (b1[s1] != 0 && b2[s2] != 0) rc = 0;
             else if (b1[s1] != 0) rc = -1;
             else rc = 1;
         }
@@ -151,7 +137,6 @@ public class PigBytesRawComparator extends WritableComparator implements Configu
         return rc;
     }
 
-    @Override
     public int compare(Object o1, Object o2) {
         NullableBytesWritable nbw1 = (NullableBytesWritable)o1;
         NullableBytesWritable nbw2 = (NullableBytesWritable)o2;
@@ -161,10 +146,8 @@ public class PigBytesRawComparator extends WritableComparator implements Configu
         if (!nbw1.isNull() && !nbw2.isNull()) {
             rc = DataType.compare(nbw1.getValueAsPigType(), nbw2.getValueAsPigType());
         } else {
-            // Two nulls are equal if indices are same
-            if (nbw1.isNull() && nbw2.isNull()) {
-                rc = nbw1.getIndex() - nbw2.getIndex();
-            }
+            // For sorting purposes two nulls are equal.
+            if (nbw1.isNull() && nbw2.isNull()) rc = 0;
             else if (nbw1.isNull()) rc = -1;
             else rc = 1;
         }

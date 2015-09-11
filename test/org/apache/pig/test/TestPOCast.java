@@ -1777,11 +1777,12 @@ public class TestPOCast {
 			plan.attachInput(t);
 			DataByteArray dba = (DataByteArray) t.get(0);
 			Result res = op.getNextDataByteArray();
-			assertEquals(POStatus.STATUS_OK, res.returnStatus);
+			assertEquals(POStatus.STATUS_ERR, res.returnStatus);
 
 			planToTestBACasts.attachInput(t);
 			res = opWithInputTypeAsBA.getNextDataByteArray();
-			assertEquals(POStatus.STATUS_OK, res.returnStatus);
+			if(res.returnStatus == POStatus.STATUS_OK)
+				assertEquals(POStatus.STATUS_ERR, res.returnStatus);
 		}
 
 		{

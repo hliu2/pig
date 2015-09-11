@@ -193,8 +193,6 @@ public class PigProcessor extends AbstractLogicalIOProcessor {
                 leaf = leaves.get(0);
             }
 
-            LOG.info("Aliases being processed per job phase (AliasName[line,offset]): " + conf.get("pig.alias.location"));
-
             runPipeline(leaf);
 
             // Calling EvalFunc.finish()

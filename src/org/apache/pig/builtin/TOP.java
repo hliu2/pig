@@ -27,7 +27,6 @@ import java.util.Random;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
-import org.apache.pig.AccumulatorEvalFunc;
 import org.apache.pig.Algebraic;
 import org.apache.pig.EvalFunc;
 import org.apache.pig.FuncSpec;
@@ -69,7 +68,7 @@ import org.apache.pig.impl.logicalLayer.schema.Schema.FieldSchema;
  *          GENERATE FLATTEN(result); *          
  *  }
  */
-public class TOP extends AccumulatorEvalFunc<DataBag> implements Algebraic {
+public class TOP extends EvalFunc<DataBag> implements Algebraic{
     private static final Log log = LogFactory.getLog(TOP.class);
     private static BagFactory mBagFactory = BagFactory.getInstance();
     private static TupleFactory mTupleFactory = TupleFactory.getInstance();
@@ -140,66 +139,40 @@ public class TOP extends AccumulatorEvalFunc<DataBag> implements Algebraic {
         }
     }
 
-    // for Accumulator interface
-    private PriorityQueue<Tuple> store = null;
-    
     @Override
-    public void accumulate(Tuple tuple) throws IOException {
+    public DataBag exec(Tuple tuple) throws IOException {
         if (tuple == null || tuple.size() < 3) {
-            return;
+            return null;
         }
         try {
             int n = (Integer) tuple.get(0);
             int fieldNum = (Integer) tuple.get(1);
             DataBag inputBag = (DataBag) tuple.get(2);
             if (inputBag == null) {
-                return;
+                return null;
             }
 
-            if (store == null) {
-                store = new PriorityQueue<Tuple>(n + 1, new TupleComparator(fieldNum, sortDesc));
-            }
-            
+            PriorityQueue<Tuple> store = new PriorityQueue<Tuple>(n + 1,
+                    new TupleComparator(fieldNum, sortDesc));
             updateTop(store, n, inputBag);
+            DataBag outputBag = mBagFactory.newDefaultBag();
+            for (Tuple t : store) {
+                outputBag.add(t);
+            }
+            if (log.isDebugEnabled()) {
+                if (randomizer.nextInt(1000) == 1) {
+                    log.debug("outputting a bag: ");
+                    for (Tuple t : outputBag)
+                        log.debug("outputting "+t.toDelimitedString("\t"));
+                    log.debug("==================");
+                }
+            }
+            return outputBag;
         } catch (ExecException e) {
             throw new RuntimeException("ExecException executing function: ", e);
         } catch (Exception e) {
             throw new RuntimeException("General Exception executing function: ", e);
         }
-    }
-
-	@Override
-	public DataBag getValue() {
-        if (store == null) {
-            return null;
-        }
-        
-        DataBag outputBag = mBagFactory.newDefaultBag();
-        
-        for (Tuple t : store) {
-            outputBag.add(t);
-        }
-        
-        if (log.isDebugEnabled()) {
-            if (randomizer.nextInt(1000) == 1) {
-                log.debug("outputting a bag: ");
-                try {
-                    for (Tuple t : outputBag) {
-                        log.debug("outputting "+t.toDelimitedString("\t"));
-                    }
-                    } catch (ExecException e) {
-                        throw new RuntimeException("ExecException executing function: ", e);
-                    }
-                log.debug("==================");
-            }
-        }
-        
-        return outputBag;
-    }
-
-    @Override
-    public void cleanup() {
-        store = null;
     }
 
     protected static void updateTop(PriorityQueue<Tuple> store, int limit, DataBag inputBag) {

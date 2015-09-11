@@ -23,14 +23,20 @@ import java.util.List;
 import java.util.Map.Entry;
 import java.util.Set;
 
+import org.apache.commons.lang.ArrayUtils;
 import org.apache.pig.backend.hadoop.executionengine.physicalLayer.PhysicalOperator;
+import org.apache.pig.backend.hadoop.executionengine.physicalLayer.expressionOperators.POUserFunc;
 import org.apache.pig.backend.hadoop.executionengine.physicalLayer.plans.PhysicalPlan;
 import org.apache.pig.backend.hadoop.executionengine.physicalLayer.relationalOperators.POSplit;
+import org.apache.pig.backend.hadoop.executionengine.physicalLayer.util.PlanHelper;
 import org.apache.pig.backend.hadoop.executionengine.tez.plan.TezEdgeDescriptor;
 import org.apache.pig.backend.hadoop.executionengine.tez.plan.TezOpPlanVisitor;
 import org.apache.pig.backend.hadoop.executionengine.tez.plan.TezOperPlan;
 import org.apache.pig.backend.hadoop.executionengine.tez.plan.TezOperator;
 import org.apache.pig.backend.hadoop.executionengine.tez.plan.operator.POValueOutputTez;
+import org.apache.pig.backend.hadoop.executionengine.tez.plan.udf.ReadScalarsTez;
+import org.apache.pig.backend.hadoop.executionengine.tez.runtime.TezInput;
+import org.apache.pig.backend.hadoop.executionengine.tez.runtime.TezOutput;
 import org.apache.pig.backend.hadoop.executionengine.tez.util.TezCompilerUtil;
 import org.apache.pig.impl.plan.OperatorKey;
 import org.apache.pig.impl.plan.PlanException;
@@ -40,12 +46,10 @@ import org.apache.pig.impl.plan.VisitorException;
 public class MultiQueryOptimizerTez extends TezOpPlanVisitor {
 
     private boolean unionOptimizerOn;
-    private List<String> unionUnsupportedStoreFuncs;
 
-    public MultiQueryOptimizerTez(TezOperPlan plan, boolean unionOptimizerOn, List<String> unionUnsupportedStoreFuncs) {
+    public MultiQueryOptimizerTez(TezOperPlan plan, boolean unionOptimizerOn) {
         super(plan, new ReverseDependencyOrderWalker<TezOperator, TezOperPlan>(plan));
         this.unionOptimizerOn = unionOptimizerOn;
-        this.unionUnsupportedStoreFuncs = unionUnsupportedStoreFuncs;
     }
 
     private void addAllPredecessors(TezOperator tezOp, List<TezOperator> predsList) {
@@ -129,7 +133,7 @@ public class MultiQueryOptimizerTez extends TezOpPlanVisitor {
                     for (TezOperator succSuccessor : getPlan().getSuccessors(successor)) {
                         if (succSuccessor.isUnion()) {
                             if (!(unionOptimizerOn
-                                    && UnionOptimizer.isOptimizable(succSuccessor, unionUnsupportedStoreFuncs))) {
+                                    && UnionOptimizer.isOptimizable(succSuccessor))) {
                                 toMergeSuccessors.add(succSuccessor);
                             }
                         } else if (successors.contains(succSuccessor)) {
@@ -208,12 +212,22 @@ public class MultiQueryOptimizerTez extends TezOpPlanVisitor {
 
         if (plan.getPredecessors(splittee) != null) {
             for (TezOperator pred : new ArrayList<TezOperator>(plan.getPredecessors(splittee))) {
+                List<TezOutput> tezOutputs = PlanHelper.getPhysicalOperators(pred.plan,
+                        TezOutput.class);
+                for (TezOutput tezOut : tezOutputs) {
+                    if (ArrayUtils.contains(tezOut.getTezOutputs(), spliteeKey)) {
+                        tezOut.replaceOutput(spliteeKey, splitterKey);
+                    }
+                }
+
                 TezEdgeDescriptor edge = pred.outEdges.remove(splittee.getOperatorKey());
                 if (edge == null) {
                     throw new VisitorException("Edge description is empty");
                 }
+                pred.outEdges.put(splitter.getOperatorKey(), edge);
+                splitter.inEdges.put(pred.getOperatorKey(), edge);
                 plan.disconnect(pred, splittee);
-                TezCompilerUtil.connectTezOpToNewSuccesor(plan, pred, splitter, edge, spliteeKey);
+                plan.connect(pred, splitter);
             }
         }
 
@@ -228,10 +242,27 @@ public class MultiQueryOptimizerTez extends TezOpPlanVisitor {
 
                 // Do not connect again in case of self join/cross/cogroup or union
                 if (splitterSuccs == null || !splitterSuccs.contains(succTezOperator)) {
-                    TezCompilerUtil.connectTezOpToNewPredecessor(plan, succTezOperator, splitter, edge, null);
+                    TezCompilerUtil.connect(plan, splitter, succTezOperator, edge);
                 }
 
-                TezCompilerUtil.replaceInput(succTezOperator, spliteeKey, splitterKey);
+                try {
+                    List<TezInput> inputs = PlanHelper.getPhysicalOperators(succTezOperator.plan, TezInput.class);
+                    for (TezInput input : inputs) {
+                        input.replaceInput(spliteeKey,
+                                splitterKey);
+                    }
+                    List<POUserFunc> userFuncs = PlanHelper.getPhysicalOperators(succTezOperator.plan, POUserFunc.class);
+                    for (POUserFunc userFunc : userFuncs) {
+                        if (userFunc.getFunc() instanceof ReadScalarsTez) {
+                            TezInput tezInput = (TezInput)userFunc.getFunc();
+                            tezInput.replaceInput(spliteeKey,
+                                    splitterKey);
+                            userFunc.getFuncSpec().setCtorArgs(tezInput.getTezInputs());
+                        }
+                    }
+                } catch (VisitorException e) {
+                    throw new PlanException(e);
+                }
 
                 if (succTezOperator.isUnion()) {
                     int index = succTezOperator.getUnionMembers().indexOf(splittee.getOperatorKey());
